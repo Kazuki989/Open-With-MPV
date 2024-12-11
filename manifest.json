@@ -1,0 +1,36 @@
+{
+   "action": {
+      "default_title": "__MSG_page_action__"
+   },
+   "background": {
+      "service_worker": "worker.js"
+   },
+   "commands": {
+      "_execute_action": {
+      }
+   },
+   "default_locale": "en",
+   "description": "__MSG_description__",
+   "homepage_url": "https://webextension.org/listing/open-in-vlc.html",
+   "host_permissions": [ "\u003Call_urls>" ],
+   "icons": {
+      "128": "/data/icons/icon128.png",
+      "16": "/data/icons/icon16.png",
+      "48": "/data/icons/icon48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1h3P6u1TvHXg5Y9Iqsk9R6IjLVdisQ6geyPy/c+hVe4C17/C1Mx5g09wkILDF69axHSvno1mqBGv9IsCQ5+pgu/z1J9rBaXhvt1ywNmwqiXmN0naVzzp2AaSTebdLOCtEkLAnt0gcMsl1RaudhymZD1Nlyowx1lEarFk96ozatHePiKsQgfzkUETwK3GIy5EOZxqOOIpnFrnIOkOSxl4789lfHZUqRo8QXq2OyPr81r7wWRLAJD4PLSaf4B1TYFn6XSroCkWvb6SPNa0FYErKQC0tc/9tKyhNyw0UjwjdVv8wkCd6X8yUseYcTgJOGmkRf7eSZ+2FXQraTGAmIACJQIDAQAB",
+   "manifest_version": 3,
+   "name": "Open with MPV",
+   "optional_permissions": [ "downloads" ],
+   "options_ui": {
+      "open_in_tab": true,
+      "page": "/data/options/index.html"
+   },
+   "permissions": [ "storage", "contextMenus", "nativeMessaging", "webRequest", "scripting" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "0.4.2",
+   "web_accessible_resources": [ {
+      "matches": [ "*://*/*" ],
+      "resources": [ "/data/inject/*" ]
+   } ]
+}
