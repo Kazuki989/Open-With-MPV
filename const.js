@@ -6,5 +6,9 @@ const TYPES = [
   // audio
   'aac', 'mp3', 'oga', 'opus', 'wav', 'weba', 'flac', 'pcm', 'm4a', 'aifc', 'aiff',
   // archive
-  'zip', 'rar'
+  'zip', 'rar', 
 ];
+
+const SUBTITLE_TYPES = [
+  'vtt', 'srt',
+]
