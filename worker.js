@@ -83,38 +83,40 @@ const open = (tab, tabId, referrer) => {
     'custom-arguments': [],
     'runtime': 'com.add0n.node'
   }, prefs => {
-    const args = prefs['custom-arguments'];
-    // macOS does not support this argument
+
+    const args = [...prefs['custom-arguments']]; // clone!
+    let refArg = null;
+
     if (prefs['one-instance'] && is.mac === false) {
       args.push('--one-instance');
     }
 
     if (prefs['send-referrer'] && referrer) {
-      args.push('--http-referrer', referrer);
+      refArg = '--referrer=' + referrer;
+      args.push(refArg);
     }
+
     if (prefs['send-user-agent']) {
-      args.push('--http-user-agent', navigator.userAgent);
+      args.push('--user-agent=' + navigator.userAgent);
     }
 
     if (SUBTITLES_LINKS.length > 0) {
-      SUBTITLES_LINKS.forEach(s => args.push('--sub-file='+ s));
+      SUBTITLES_LINKS.forEach(s => args.push('--sub-file=' + s));
     }
 
-    // decode
+    // decode Google redirect
     if (url.startsWith('https://www.google.') && url.includes('&url=')) {
       url = decodeURIComponent(url.split('&url=')[1].split('&')[0]);
     }
 
-    // meta title must be appended to this (https://code.videolan.org/videolan/vlc/-/issues/22560)
+    // title handling
     if (title && prefs['send-title-meta']) {
-      // since we are using "open -a VLC URL --args" we can not send meta data appended after the URL
-      if (is.mac && prefs['one-instance']) {
-        args.push(`--meta-title=${title}`);
+      if (prefs['one-instance']) {
+        args.push(`--title='${title}'`);
         args.push(url);
-      }
-      else {
+      } else {
         args.push(url);
-        args.push(`:meta-title=${title}`);
+        args.push(`--title='${title}'`);
       }
     }
     else {
@@ -123,74 +125,101 @@ const open = (tab, tabId, referrer) => {
 
     const native = new Native(tabId, prefs.runtime);
 
-    console.info('[VLC Arguments]', args);
+    console.info('[Player Arguments]', args);
+
+    // 🔁 fallback executor
+    const execWithFallback = async (execPath, execArgs) => {
+      try {
+        await native.exec(execPath, execArgs);
+      }
+      catch (err) {
+        console.warn('[Primary failed]', err);
+
+        if (refArg) {
+          const newArgs = execArgs.filter(a => a !== refArg);
+
+          console.warn('[Fallback] Retrying without referrer...');
+          try {
+            await native.exec(execPath, newArgs);
+          }
+          catch (err2) {
+            console.error('[Fallback failed]', err2);
+            notify(err2, tabId);
+          }
+        }
+        else {
+          notify(err, tabId);
+        }
+      }
+    };
+
+    // ===== PLATFORM HANDLING =====
 
     if (is.mac) {
       if (prefs['one-instance']) {
         const href = url;
-        args.splice(args.lastIndexOf(url), 1);
+
+        const idx = args.lastIndexOf(url);
+        if (idx !== -1) args.splice(idx, 1);
 
         const mArgs = ['-a', 'VLC', href];
         if (args.length > 0) {
           mArgs.push('--args', ...args);
         }
 
-        native.exec('open', mArgs);
+        execWithFallback('open', mArgs);
       }
       else {
-        native.exec('/Applications/VLC.app/Contents/MacOS/VLC', args);
+        execWithFallback('/Applications/VLC.app/Contents/MacOS/VLC', args);
       }
     }
-    else {
-      if (is.linux) {
-        native.exec(prefs.path || 'vlc', args);
-      }
-      else if (prefs.path) {
-        native.exec(prefs.path, args);
-      }
-      else { // Windows
-        native.env().then(res => {
-          const paths = [
-            res.env['ProgramFiles(x86)'] + '\\VideoLAN\\VLC\\vlc.exe',
-            res.env['ProgramFiles'] + '\\VideoLAN\\VLC\\vlc.exe'
-          ];
 
-          chrome.runtime.sendNativeMessage(prefs.runtime, {
-            permissions: ['fs'],
-            args: [...paths],
-            script: `
-              const fs = require('fs');
-              const exist = path => new Promise(resolve => fs.access(path, fs.F_OK, e => {
-                resolve(e ? false : true);
-              }));
-              Promise.all(args.map(exist)).then(d => {
-                push({d});
-                done();
-              }).catch(e => push({e: e.message}));
-            `
-          }, r => {
-            if (!r) {
-              console.warn('Native Client Exited', chrome.runtime.lastError);
+    else if (is.linux) {
+      execWithFallback(prefs.path || 'vlc', args);
+    }
+
+    else if (prefs.path) {
+      execWithFallback(prefs.path, args);
+    }
+
+    else { // Windows auto-detect
+      native.env().then(res => {
+        const paths = [
+          res.env['ProgramFiles(x86)'] + '\\VideoLAN\\VLC\\vlc.exe',
+          res.env['ProgramFiles'] + '\\VideoLAN\\VLC\\vlc.exe'
+        ];
+
+        chrome.runtime.sendNativeMessage(prefs.runtime, {
+          permissions: ['fs'],
+          args: [...paths],
+          script: `
+            const fs = require('fs');
+            const exist = path => new Promise(resolve => fs.access(path, fs.F_OK, e => {
+              resolve(e ? false : true);
+            }));
+            Promise.all(args.map(exist)).then(d => {
+              push({d});
+              done();
+            }).catch(e => push({e: e.message}));
+          `
+        }, r => {
+
+          let path = 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe';
+
+          if (r) {
+            if (res.env['ProgramFiles'] && r.d[1]) {
+              path = paths[1];
             }
-            else if (r && r.e) {
-              console.warn('Unexpected Error', r.e);
+            else if (res.env['ProgramFiles(x86)'] && r.d[0]) {
+              path = paths[0]; // ✅ fixed bug
             }
-            // VLC is now default to:
-            let path = 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe';
-            if (r) {
-              if (res.env['ProgramFiles'] && r.d[1]) {
-                path = paths[1];
-              }
-              else if (res.env['ProgramFiles(x86)'] && r.d[0]) {
-                path = paths[10];
-              }
-            }
-            chrome.storage.local.set({
-              path
-            }, () => native.exec(path, args));
+          }
+
+          chrome.storage.local.set({ path }, () => {
+            execWithFallback(path, args);
           });
         });
-      }
+      });
     }
   });
 };
@@ -486,7 +515,12 @@ async function filtersubtitlelinks(links) {
 }
 
 async function checklanguage(link) {
-  let data = (await (await fetch(link)).text()).split('\n') 
+  // TODO SRT SUBS LANGUAGE FILTER
+  if (link.endsWith('.srt')) {
+    return 'eng'
+  }
+
+  let data = (await (await fetch(link)).text()).split('\n')
   let cleanedData = data.reduce((acc, line) => {
     if (line && !/\d/.test(line)) {
         const cleanedLine = line
@@ -509,6 +543,29 @@ async function checklanguage(link) {
   return lang
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -50,10 +50,13 @@ class Native {
     }); // do not catch here
   }
   exec(command, args) {
-    return this.#run({
-      cmd: 'exec',
-      command,
-      arguments: args
-    }).catch(e => console.info('native.exec', e));
+  return this.#run({
+    cmd: 'exec',
+    command,
+    arguments: args
+  }).catch(e => {
+    console.warn('native.exec failed:', e);
+    throw e; // 🔥 CRITICAL: allow caller (open) to detect failure
+  });
   }
 }
